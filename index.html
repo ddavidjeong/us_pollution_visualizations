@@ -1,0 +1,328 @@
+<html>
+
+<head>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://d3js.org/topojson.v3.min.js"></script>
+  
+  
+  <style>
+    .state {
+      fill: rgb(194, 247, 174);
+      fill-opacity: 0.2;
+      stroke: black;
+      stroke-width: 0.5px;
+    }
+
+    .city-point {
+      fill: steelblue;
+    } 
+
+    .city-label {
+      font-size: 10px;
+    }
+
+  
+
+    .slider {
+      width: 80%;
+      margin: 0 auto;
+    } */
+
+    .button {
+      display: inline-block;
+      padding: 10px 20px;
+      font-size: 16px;
+      font-weight: bold;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+      border-radius: 5px;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    .water {
+      background-color: #5eace1;
+      color: #fff;
+    }
+
+    .total {
+      background-color: #a07fec;
+      color: #fff;
+    }
+
+    .air {
+      background-color: #ec5757;
+      color: #fff;
+    }
+
+    .button:hover {
+      background-color: #2c3e50;
+      color: #fff;
+    }
+
+    h2 {
+      text-align: center;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    h3 {
+      text-align: center;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+  </style>
+</head>
+
+<body>
+  <h3>
+    CS 3300 Project 2
+  </h3>
+  <h2>Mapping Pollution Patterns Across U.S. Cities</h2>
+
+  <svg id="choropleth" height="900" width="2000" style="margin-top:-125px; margin-left:-150px"></svg>
+  </div>
+
+  <script>
+    const svg = d3.select("svg#choropleth");
+    const width = svg.attr("width");
+    const height = svg.attr("height");
+    const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+    const mapWidth = width - margin.left - margin.right;
+    const mapHeight = height - margin.top - margin.bottom;
+    const map = svg.append("g")
+      .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+    const requestData = async () => {
+      let cityPoints;
+      
+      const statesData = await d3.json("us_states.topojson")
+      let citiesData = await d3.csv("uscities.csv")
+      let data = await d3.csv("cities_air_quality_water_pollution.csv");
+
+      data = data.filter((d) => d[` "Country"`] === ` "United States of America"`);
+      const uniqueCities = Array.from(new Set(data.map(d => d.City)));
+      citiesData = citiesData.filter(d => uniqueCities.includes(d.city));
+      citiesData = citiesData.filter(d => d.population > 10000) //Exclude cities with small population
+
+      var projection = d3.geoAlbersUsa().translate([mapWidth / 2, mapHeight / 2]).scale(1500);
+      var path = d3.geoPath().projection(projection);
+
+      var states = topojson.feature(statesData, statesData.objects.us_states).features
+
+      map.selectAll(".state")
+        .data(states)
+        .join("path")
+        .attr("d", path)
+        .attr("class", "state");
+
+      const popExtent = d3.extent(citiesData, (d) => Number(d['population']));
+      let populationScale = d3.scaleLog()
+                                .domain(popExtent)
+                                .range([3, 15]);
+
+      //const binColors = ["#EDA9E7","#FF2CEC","#E54372","#A423B0", "#5B2770"];
+      pol = [];
+      data.forEach((data, i) =>{
+        citiesData.forEach((city, j) =>{
+          if (data["City"] == city["city_ascii"]){
+            // console.log(city["city"]);
+            city["AirQuality"] = 100 - Number(data[' "AirQuality"']);
+            city["WaterPollution"] = Number(data[' "WaterPollution"']);
+            city["totalPollution"] = city["AirQuality"] + city["WaterPollution"];
+            pol.push(city["totalPollution"]);
+          }
+        })
+      })
+
+      function show(extent, colorScale, state) {
+        // const xExtent = d3.extent(citiesData, d => d['totalPollution']);
+        console.log(extent);
+
+        console.log(citiesData);
+
+        const polScale = d3.scaleOrdinal().domain(pol).range(d3.schemeCategory10);
+
+        cityPoints = map.selectAll("circle")
+          .data(citiesData)
+          .enter().append("circle")
+          .attr("cx", d => {
+            const coordinates = projection([+d.lng, +d.lat]);
+            return coordinates ? coordinates[0] : null;
+          })
+          .attr("cy", d => {
+            const coordinates = projection([+d.lng, +d.lat]);
+            return coordinates ? coordinates[1] : null;
+          })
+          .attr("r", d => {
+            // console.log(populationScale(d["population"]));
+            return populationScale(d["population"]);
+          })
+          .attr("class", "city-point")
+          .style("fill", d => {
+            return colorScale(d[state]);
+          });
+
+        cityPoints.on("mouseover", function (event, d) {
+          const x = projection([+d.lng, +d.lat])[0] + 5;
+          const y = projection([+d.lng, +d.lat])[1] - 5;
+
+          
+          cityPoints              
+              .attr("opacity", function (otherCity) {
+                  return (otherCity === d) ? 1 : 0.1;
+              });
+
+
+          var text = d.city + ", Pollution Level: ";
+          
+          if (state == "totalPollution"){
+            text += Math.trunc(d.totalPollution);
+          }
+          else if (state == "AirQuality"){
+            text += Math.trunc(d.AirQuality);
+          }
+          else{
+            text += Math.trunc(d.WaterPollution);
+          }
+          console.log(d.totalPollution);
+          console.log(d.AirQuality);
+          console.log(d.WaterPollution);
+
+
+
+          svg.append("text")
+            .attr("id", "city-label")
+            .attr("x", x)
+            .attr("y", y + 5)
+            .text(text)
+            .style("font-size", "17px")
+            .style("font-weight", "bold")
+            .style("font-family", "Arial, sans-serif")
+            .attr("class", "city-label");
+        })
+          .on("mouseout", function () {
+            svg.select("#city-label").remove();
+            cityPoints      
+              .attr("opacity", 1)
+
+          
+          });
+      }
+      // total_pollution();
+      const totalExtent = d3.extent(citiesData, d => d['totalPollution']);
+      const airExtent = d3.extent(citiesData, d => d['AirQuality']);
+      const waterExtent = d3.extent(citiesData, d => d['WaterPollution']);
+      const totalScale = d3.scaleSequential(d3.interpolatePurples).domain(totalExtent)
+
+      const airScale = d3.scaleSequential(d3.interpolateReds).domain(airExtent);
+
+      const waterScale =d3.scaleSequential(d3.interpolateBlues).domain(waterExtent);
+      
+      const buttons = d3.select("body");
+      let flag = false;
+      buttons.append("button").attr("type", "button").attr("class","button total").text("Show Total Pollution").style("margin-left", "566px").on("click", function(){ 
+        if (!flag) {
+          show(totalExtent, totalScale, "totalPollution")
+          flag = true;
+        }
+        else {
+          let cityPoints = map.selectAll("circle");
+          cityPoints.data(citiesData).transition().style("fill", (d) => {
+            return totalScale(d["totalPollution"]);
+          })
+          cityPoints.on("mouseover", function (event, d) {
+            const x = projection([+d.lng, +d.lat])[0] + 5;
+            const y = projection([+d.lng, +d.lat])[1] - 5;
+
+            cityPoints.attr("opacity", function (otherCity) {
+              return (otherCity === d) ? 1 : 0.3;
+            })
+            var text = d.city + ", Pollution Level: ";
+            text += Math.trunc(d.totalPollution);
+
+            svg.append("text")
+            .attr("id", "city-label")
+            .attr("x", x)
+            .attr("y", y + 5)
+            .text(text)
+            .style("font-size", "17px")
+            .style("font-weight", "bold")
+            .style("font-family", "Arial, sans-serif")
+            .attr("class", "city-label");
+          })
+        }
+      })
+
+      buttons.append("button").attr("type", "button").attr("class","button air").text("Show Air Pollution").style("margin-left", "100px").on("click", function(){
+        if (!flag) {
+          show(airExtent, airScale, "AirQuality")
+          flag = true;
+        }
+        else {
+          let cityPoints = map.selectAll("circle");
+          cityPoints.data(citiesData).transition().style("fill", (d) => {
+            return airScale(d["AirQuality"]);
+          })
+          cityPoints.on("mouseover", function (event, d) {
+            const x = projection([+d.lng, +d.lat])[0] + 5;
+            const y = projection([+d.lng, +d.lat])[1] - 5;
+
+            cityPoints.attr("opacity", function (otherCity) {
+              return (otherCity === d) ? 1 : 0.3;
+            })
+            var text = d.city + ", Pollution Level: ";
+            text += Math.trunc(d.AirQuality);
+
+            svg.append("text")
+            .attr("id", "city-label")
+            .attr("x", x)
+            .attr("y", y + 5)
+            .text(text)
+            .style("font-size", "17px")
+            .style("font-weight", "bold")
+            .style("font-family", "Arial, sans-serif")
+            .attr("class", "city-label");
+          })
+        }
+      })
+
+      buttons.append("button").attr("type", "button").attr("class","button water").text("Show Water Pollution").style("margin-left", "100px").on("click", function(){ 
+        if (!flag) {
+          show(waterExtent, waterScale, "WaterPollution")
+          flag = true;
+        }
+        else {
+          let cityPoints = map.selectAll("circle");
+          cityPoints.data(citiesData).transition().style("fill", (d) => {
+            return waterScale(d["WaterPollution"]);
+          })
+          cityPoints.on("mouseover", function (event, d) {
+            const x = projection([+d.lng, +d.lat])[0] + 5;
+            const y = projection([+d.lng, +d.lat])[1] - 5;
+
+            cityPoints.attr("opacity", function (otherCity) {
+              return (otherCity === d) ? 1 : 0.3;
+            })
+            var text = d.city + ", Pollution Level: ";
+            text += Math.trunc(d.WaterPollution);
+
+            svg.append("text")
+            .attr("id", "city-label")
+            .attr("x", x)
+            .attr("y", y + 5)
+            .text(text)
+            .style("font-size", "17px")
+            .style("font-weight", "bold")
+            .style("font-family", "Arial, sans-serif")
+            .attr("class", "city-label");
+          })
+        }
+      })
+    }
+ 
+    
+    requestData();
+  </script>
+</body>
+</html>
+
+
+
